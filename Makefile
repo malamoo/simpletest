@@ -1,19 +1,25 @@
 CFLAGS = -Wall -Werror -std=c99
 
 .PHONY: all
-all: mkdir bin/test
+all: mkdir bin/st
 
 .PHONY: mkdir
 mkdir:
 	mkdir -p build bin
 
-bin/test: build/main.test.o build/even.test.o
+bin/st: build/main.test.o build/even.test.o build/odd.test.o build/st.o
 	cc $^ -o $@
 
-build/even.test.o: src/even.test.c
+build/odd.test.o: example/odd.test.c
 	cc $(CFLAGS) -c $^ -o $@
 
-build/main.test.o: src/main.test.c
+build/even.test.o: example/even.test.c
+	cc $(CFLAGS) -c $^ -o $@
+
+build/main.test.o: example/main.test.c
+	cc $(CFLAGS) -c $^ -o $@
+
+build/st.o: example/st.c
 	cc $(CFLAGS) -c $^ -o $@
 
 .PHONY: clean
