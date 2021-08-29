@@ -7,7 +7,7 @@ all: mkdir bin/st
 mkdir:
 	mkdir -p build bin
 
-bin/st: build/main.test.o build/even.test.o build/odd.test.o build/st.o
+bin/st: build/main.test.o build/even.test.o build/odd.test.o
 	cc $^ -o $@
 
 build/odd.test.o: example/odd.test.c
@@ -17,9 +17,6 @@ build/even.test.o: example/even.test.c
 	cc $(CFLAGS) -c $^ -o $@
 
 build/main.test.o: example/main.test.c
-	cc $(CFLAGS) -c $^ -o $@
-
-build/st.o: example/st.c
 	cc $(CFLAGS) -c $^ -o $@
 
 .PHONY: clean

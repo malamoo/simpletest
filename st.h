@@ -2,13 +2,16 @@
 #define INCLUDE_ST_H
 #include <stdlib.h>
 
-typedef int (*st_func_t)(void);
 typedef struct st_state st_state_t;
+typedef struct st_result st_result_t;
+typedef st_result_t *(*st_func_t)(void);
 
 st_state_t *st_state_new();
 void st_state_delete(st_state_t *self);
-void st_state_add_test(st_state_t *self, char *test_name, st_func_t test_func);
+void st_state_add_test(st_state_t *self, char *name, st_func_t func);
 void st_state_run_tests(st_state_t *self);
+st_result_t *st_result_new(int success, char *expr);
+void st_result_delete(st_result_t *self);
 
 /*
  * The global state of the program.
@@ -19,30 +22,33 @@ void st_state_run_tests(st_state_t *self);
  */
 extern st_state_t *st_state;
 
-#define ST_ASSERT_TRUE(truth) \
-        if (!(truth))         \
-                return 0;     \
-        return 1
+/*
+ * Asserts that a given Boolean expression evaluates
+ * to true and returns the result along with the
+ * expression as a string.
+ */
+#define ST_ASSERT_TRUE(TRUTH) \
+        return st_result_new(TRUTH, #TRUTH)
 
 /*
  * Defines a test with a given name and tracks it in the
  * global state before st_main is executed.
  */
-#define ST_TEST(test_name)                                                \
-        extern st_state_t *st_state;                                      \
-        static int test_name(void);                                       \
-        static int run_##test_name(void)                                  \
-        {                                                                 \
-                return test_name();                                       \
-        }                                                                 \
-        static void init_##test_name(void) __attribute__((constructor));  \
-        static void init_##test_name(void)                                \
-        {                                                                 \
-                if (st_state == NULL)                                     \
-                        st_state = st_state_new();                        \
-                st_state_add_test(st_state, #test_name, run_##test_name); \
-        }                                                                 \
-        static int test_name(void)
+#define ST_TEST(NAME)                                           \
+        extern st_state_t *st_state;                            \
+        static st_result_t *NAME(void);                         \
+        static st_result_t *run_##NAME(void)                    \
+        {                                                       \
+                return NAME();                                  \
+        }                                                       \
+        void init_##NAME(void) __attribute__((constructor));    \
+        void init_##NAME(void)                                  \
+        {                                                       \
+                if (st_state == NULL)                           \
+                        st_state = st_state_new();              \
+                st_state_add_test(st_state, #NAME, run_##NAME); \
+        }                                                       \
+        static st_result_t *NAME(void)
 
 /*
  * Executes each test in the global state and prints
@@ -65,15 +71,19 @@ extern st_state_t *st_state;
 #ifdef ST_IMPLEMENTATION
 #include <stdio.h>
 
-struct st_test {
-        char *name;
-        st_func_t func;
-        int success;
-};
-
 struct st_state {
         struct st_test *tests;
         size_t test_count;
+};
+
+struct st_test {
+        char *name;
+        st_func_t func;
+};
+
+struct st_result {
+        int success;
+        char *expr;
 };
 
 /* Creates the global state. */
@@ -81,7 +91,7 @@ st_state_t *st_state_new()
 {
         st_state_t *self;
 
-        self = malloc(sizeof(struct st_state));
+        self = malloc(sizeof(st_state_t));
         if (self == NULL) {
                 printf("Error: failed to allocate memory for st_state");
                 exit(EXIT_FAILURE);
@@ -97,7 +107,7 @@ void st_state_delete(st_state_t *self)
 }
 
 /* Adds a test to the global state. */
-void st_state_add_test(st_state_t *self, char *test_name, st_func_t test_func)
+void st_state_add_test(st_state_t *self, char *name, st_func_t func)
 {
         size_t new_size;
         size_t index;
@@ -105,8 +115,8 @@ void st_state_add_test(st_state_t *self, char *test_name, st_func_t test_func)
         index = self->test_count++;
         new_size = self->test_count * sizeof(struct st_test);
         self->tests = realloc(self->tests, new_size);
-        self->tests[index].name = test_name;
-        self->tests[index].func = test_func;
+        self->tests[index].name = name;
+        self->tests[index].func = func;
 }
 
 /*
@@ -116,16 +126,42 @@ void st_state_add_test(st_state_t *self, char *test_name, st_func_t test_func)
 void st_state_run_tests(st_state_t *self)
 {
         size_t i;
-        char *test_name;
-        st_func_t test_func;
-        int success;
+        char *name;
+        st_func_t func;
+        st_result_t *result;
 
         for (i = 0; i < self->test_count; i++) {
-                test_name = self->tests[i].name;
-                test_func = self->tests[i].func;
-                success = test_func();
-                printf("%s %s\n", test_name, success ? "passed" : "failed");
+                name = self->tests[i].name;
+                func = self->tests[i].func;
+                result = func();
+                if (result->success)
+                        printf("%s passed\n", name);
+                else
+                        printf("%s failed: (%s) is false\n", name,
+                               result->expr);
+                st_result_delete(result);
         }
+}
+
+/* Creates a new test result. */
+st_result_t *st_result_new(int success, char *expr)
+{
+        st_result_t *self;
+
+        self = malloc(sizeof(st_result_t));
+        if (self == NULL) {
+                printf("Error: failed to allocate memory for st_result");
+                exit(EXIT_FAILURE);
+        }
+        self->success = success;
+        self->expr = expr;
+        return self;
+}
+
+/* Deletes a test result. */
+void st_result_delete(st_result_t *self)
+{
+        free(self);
 }
 
 #endif /* ST_IMPLEMENTATION */
