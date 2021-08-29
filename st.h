@@ -19,6 +19,11 @@ void st_state_run_tests(st_state_t *self);
  */
 extern st_state_t *st_state;
 
+#define ST_ASSERT_TRUE(truth) \
+        if (!(truth))         \
+                return 0;     \
+        return 1
+
 /*
  * Defines a test with a given name and tracks it in the
  * global state before st_main is executed.
