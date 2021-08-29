@@ -3,43 +3,46 @@
 #include <stdlib.h>
 
 typedef struct st_state st_state_t;
-typedef struct st_result st_result_t;
-typedef st_result_t *(*st_func_t)(void);
+typedef void (*st_func_t)(size_t index);
 
 st_state_t *st_state_new();
 void st_state_delete(st_state_t *self);
 void st_state_add_test(st_state_t *self, char *name, st_func_t func);
 void st_state_run_tests(st_state_t *self);
-st_result_t *st_result_new(int success, char *expr);
-void st_result_delete(st_result_t *self);
+void st_state_fail_test(st_state_t *self, size_t index, char *reason);
 
 /*
  * The global state of the program.
- * The state is initialized with references to each defined
- * test before st_main is executed.
- * This approach has the desirable property of not having to
- * explicitly depend on specific tests within st_main.
+ * The state is initialized with references to each
+ * defined test before ST_MAIN is executed.
+ * This approach leads to the desirable property of not
+ * having to explicitly depend on specific tests
+ * within ST_MAIN.
  */
 extern st_state_t *st_state;
 
 /*
  * Asserts that a given Boolean expression evaluates
- * to true and returns the result along with the
- * expression as a string.
+ * to true and if not, fails the associated test.
  */
-#define ST_ASSERT_TRUE(TRUTH) \
-        return st_result_new(TRUTH, #TRUTH)
+#define ST_ASSERT_TRUE(TRUTH)                              \
+        if (!(TRUTH)) {                                    \
+                st_state_fail_test(st_state, st_index,     \
+                                   "(" #TRUTH ")"          \
+                                   " evaluates to false"); \
+                return;                                    \
+        }
 
 /*
  * Defines a test with a given name and tracks it in the
- * global state before st_main is executed.
+ * global state before ST_MAIN is executed.
  */
 #define ST_TEST(NAME)                                           \
         extern st_state_t *st_state;                            \
-        static st_result_t *NAME(void);                         \
-        static st_result_t *run_##NAME(void)                    \
+        static void NAME(size_t st_index);                      \
+        static void run_##NAME(size_t st_index)                 \
         {                                                       \
-                return NAME();                                  \
+                return NAME(st_index);                          \
         }                                                       \
         void init_##NAME(void) __attribute__((constructor));    \
         void init_##NAME(void)                                  \
@@ -48,7 +51,7 @@ extern st_state_t *st_state;
                         st_state = st_state_new();              \
                 st_state_add_test(st_state, #NAME, run_##NAME); \
         }                                                       \
-        static st_result_t *NAME(void)
+        static void NAME(size_t st_index)
 
 /*
  * Executes each test in the global state and prints
@@ -79,11 +82,8 @@ struct st_state {
 struct st_test {
         char *name;
         st_func_t func;
-};
-
-struct st_result {
         int success;
-        char *expr;
+        char *fail_reason;
 };
 
 /* Creates the global state. */
@@ -93,7 +93,7 @@ st_state_t *st_state_new()
 
         self = malloc(sizeof(st_state_t));
         if (self == NULL) {
-                printf("Error: failed to allocate memory for st_state");
+                printf("Error: failed to allocate memory for st_state_t");
                 exit(EXIT_FAILURE);
         }
         return self;
@@ -117,6 +117,8 @@ void st_state_add_test(st_state_t *self, char *name, st_func_t func)
         self->tests = realloc(self->tests, new_size);
         self->tests[index].name = name;
         self->tests[index].func = func;
+        self->tests[index].success = 1;
+        self->tests[index].fail_reason = NULL;
 }
 
 /*
@@ -126,42 +128,27 @@ void st_state_add_test(st_state_t *self, char *name, st_func_t func)
 void st_state_run_tests(st_state_t *self)
 {
         size_t i;
-        char *name;
-        st_func_t func;
-        st_result_t *result;
+        struct st_test *tests;
 
+        tests = self->tests;
         for (i = 0; i < self->test_count; i++) {
-                name = self->tests[i].name;
-                func = self->tests[i].func;
-                result = func();
-                if (result->success)
-                        printf("%s passed\n", name);
+                tests[i].func(i);
+                if (tests[i].success)
+                        printf("%s PASSED\n", tests[i].name);
                 else
-                        printf("%s failed: (%s) is false\n", name,
-                               result->expr);
-                st_result_delete(result);
+                        printf("%s FAILED: %s\n", tests[i].name,
+                               tests[i].fail_reason);
         }
 }
 
-/* Creates a new test result. */
-st_result_t *st_result_new(int success, char *expr)
+/*
+ * Fails a test in the global state at the given index
+ * with a reason.
+ */
+void st_state_fail_test(st_state_t *self, size_t index, char *reason)
 {
-        st_result_t *self;
-
-        self = malloc(sizeof(st_result_t));
-        if (self == NULL) {
-                printf("Error: failed to allocate memory for st_result");
-                exit(EXIT_FAILURE);
-        }
-        self->success = success;
-        self->expr = expr;
-        return self;
-}
-
-/* Deletes a test result. */
-void st_result_delete(st_result_t *self)
-{
-        free(self);
+        self->tests[index].success = 0;
+        self->tests[index].fail_reason = reason;
 }
 
 #endif /* ST_IMPLEMENTATION */
